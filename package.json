@@ -1,0 +1,15 @@
+{
+  "name": "sample-go-neon-functions",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "mkdir -p build && GOOS=js GOARCH=wasm go build -o build/app.wasm . && cp \"$(go env GOROOT)/lib/wasm/wasm_exec.js\" build/ && cp src/*.mjs build/",
+    "deploy": "neon deploy",
+    "dev": "neon dev"
+  },
+  "devDependencies": {
+    "@neon/config": "1.7.2",
+    "@types/node": "26.6.1",
+    "neon": "5.0.0"
+  }
+}
