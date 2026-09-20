@@ -1,29 +1,15 @@
 import "./wasm_exec.js";
 import { readFile } from "node:fs/promises";
 
-globalThis.tryCatch = (fn) => {
-  try {
-    return {
-      result: fn(),
-    };
-  } catch (error) {
-    return {
-      error,
-    };
-  }
-};
+let bindingPromise;
 
-let modPromise;
-
-async function fetch(request, env) {
-  modPromise ??= readFile(new URL("./app.wasm", import.meta.url)).then(
-    WebAssembly.compile,
+async function createBinding() {
+  const mod = await WebAssembly.compile(
+    await readFile(new URL("./app.wasm", import.meta.url)),
   );
 
-  const mod = await modPromise;
-
   const binding = {};
-  globalThis.context = { env: env ?? process.env, ctx: {}, binding };
+  globalThis.context = { env: process.env, ctx: {}, binding };
 
   const go = new globalThis.Go();
 
@@ -32,19 +18,39 @@ async function fetch(request, env) {
     ready = resolve;
   });
 
-  const instance = new WebAssembly.Instance(mod, {
-    ...go.importObject,
-    workers: {
-      ready,
+  const runPromise = go.run(
+    new WebAssembly.Instance(mod, {
+      ...go.importObject,
+      workers: { ready },
+    }),
+  );
+
+  runPromise.then(
+    () => {
+      bindingPromise = undefined;
     },
-  });
+    (error) => {
+      console.error("Go runtime exited unexpectedly:", error);
+      bindingPromise = undefined;
+    },
+  );
 
-  go.run(instance);
-  await readyPromise;
+  await Promise.race([
+    readyPromise,
+    runPromise.then(() => {
+      throw new Error("Go runtime exited before signaling readiness");
+    }),
+  ]);
 
-  return binding.handleRequest(request);
+  return binding;
 }
 
 export default {
-  fetch,
+  async fetch(request) {
+    bindingPromise ??= createBinding().catch((error) => {
+      bindingPromise = undefined;
+      throw error;
+    });
+    return (await bindingPromise).handleRequest(request);
+  },
 };
