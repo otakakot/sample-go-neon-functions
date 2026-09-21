@@ -1,19 +1,23 @@
-//go:build js && wasm
-
 package main
 
 import (
-	"fmt"
+	"bytes"
+	"io"
 	"net/http"
 
 	"github.com/syumai/workers-go"
 )
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Hello Neon!")
+	http.HandleFunc("/hello", func(w http.ResponseWriter, req *http.Request) {
+		w.Write([]byte("Hello!"))
 	})
-	workers.ServeNonBlock(nil)
-	workers.Ready()
-	select {}
+	http.HandleFunc("/echo", func(w http.ResponseWriter, req *http.Request) {
+		b, err := io.ReadAll(req.Body)
+		if err != nil {
+			panic(err)
+		}
+		io.Copy(w, bytes.NewReader(b))
+	})
+	workers.Serve(nil)
 }
